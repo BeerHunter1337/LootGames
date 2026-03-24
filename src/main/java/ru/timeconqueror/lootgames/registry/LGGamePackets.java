@@ -11,8 +11,11 @@ import ru.timeconqueror.lootgames.common.packet.game.SPMSFieldChanged;
 import ru.timeconqueror.lootgames.common.packet.game.SPMSGenBoard;
 import ru.timeconqueror.lootgames.common.packet.game.SPMSResetFlags;
 import ru.timeconqueror.lootgames.common.packet.game.SPMSSpawnLevelBeatParticles;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.CPSudokuEndGameCheck;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.CPSudokuToggleNote;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncBoard;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncCell;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncCellNotes;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuResetNumber;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuSpawnLevelBeatParticles;
 
@@ -34,6 +37,9 @@ public class LGGamePackets {
 
         LootGamesAPI.regServerPacket(SPSSyncCell.class);
         LootGamesAPI.regServerPacket(SPSSyncBoard.class);
+        LootGamesAPI.regClientPacket(CPSudokuToggleNote.class);
+        LootGamesAPI.regClientPacket(CPSudokuEndGameCheck.class);
+        LootGamesAPI.regServerPacket(SPSSyncCellNotes.class);
         LootGamesAPI.regServerPacket(SPSudokuSpawnLevelBeatParticles.class);
         LootGamesAPI.regServerPacket(SPSudokuResetNumber.class);
     }

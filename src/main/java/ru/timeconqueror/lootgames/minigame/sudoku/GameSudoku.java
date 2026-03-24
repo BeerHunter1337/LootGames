@@ -78,6 +78,19 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
         }
     }
 
+    public void handleEndGameCheck() {
+        if (endGameCheckTime != 0 && System.currentTimeMillis() - endGameCheckTime <= 500) {
+            if (currentLevel > 1) {
+                triggerGameWin();
+            } else {
+                triggerGameLose();
+            }
+        } else {
+            sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.check_end"));
+            endGameCheckTime = System.currentTimeMillis();
+        }
+    }
+
     public void onLevelSuccessfullyFinished() {
         currentLevel++;
         if (currentLevel <= 4) {
@@ -138,21 +151,12 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
                 sendUpdatePacketToNearby(new SPSSyncBoard(board));
                 return;
             }
-            if (type == MouseClickType.LEFT) {
-                if (endGameCheckTime != 0 && System.currentTimeMillis() - endGameCheckTime <= 500) {
-                    if (currentLevel > 1) {
-                        triggerGameWin();
-                    } else {
-                        triggerGameLose();
-                    }
-                } else {
-                    sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.check_end"));
-                    endGameCheckTime = System.currentTimeMillis();
-                }
-            } else if (player.isSneaking() && type == MouseClickType.RIGHT) {
+            if (player.isSneaking() && type == MouseClickType.RIGHT) {
                 board.cycleValueMinus(pos);
             } else if (type == MouseClickType.RIGHT) {
                 board.cycleValueAdd(pos);
+            } else {
+                return;
             }
             sendUpdatePacketToNearby(new SPSSyncCell(pos, board.getPlayerValue(pos)));
             save();

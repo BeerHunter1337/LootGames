@@ -164,6 +164,8 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
             }
         }
 
+        Minecraft mc = Minecraft.getMinecraft();
+
         for (int cx = 0; cx < size; cx++) {
             for (int cz = 0; cz < size; cz++) {
                 Pos2i pos = new Pos2i(cx, cz);
@@ -188,7 +190,6 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
                     }
 
                     String text = Integer.toString(actualVal);
-                    Minecraft mc = Minecraft.getMinecraft();
 
                     float stringWidth = mc.fontRenderer.getStringWidth(text);
                     float stringHeight = mc.fontRenderer.FONT_HEIGHT;
@@ -214,6 +215,31 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
                     GL11.glPopMatrix();
 
                     GL11.glDisable(GL11.GL_DEPTH_TEST);
+                } else if (puzzleVal == 0) {
+                    boolean[] cellNotes = board.getNotes(pos);
+                    float noteScale = 0.027f;
+                    float px = 1.0f / 16.0f;
+                    float notesBoxStart = 1.25f * px;
+                    float miniCellSize = 4.5f * px;
+                    for (int d = 1; d <= 9; d++) {
+                        if (!cellNotes[d - 1]) continue;
+
+                        int noteCol = (d - 1) % 3;
+                        int noteRow = (d - 1) / 3;
+                        String text = Integer.toString(d);
+                        float textWidth = mc.fontRenderer.getStringWidth(text) * noteScale;
+                        float textHeight = mc.fontRenderer.FONT_HEIGHT * noteScale;
+                        float miniCellX = cx + notesBoxStart + noteCol * miniCellSize;
+                        float miniCellZ = cz + notesBoxStart + noteRow * miniCellSize;
+                        float nx = miniCellX + (miniCellSize - textWidth) / 2.0f;
+                        float nz = miniCellZ + (miniCellSize - textHeight) / 2.0f;
+
+                        GL11.glPushMatrix();
+                        GL11.glTranslatef(nx, nz, -0.02f);
+                        GL11.glScalef(noteScale, noteScale, noteScale);
+                        mc.fontRenderer.drawString(text, 0, 0, 0xAAAAAA, false);
+                        GL11.glPopMatrix();
+                    }
                 }
             }
         }
