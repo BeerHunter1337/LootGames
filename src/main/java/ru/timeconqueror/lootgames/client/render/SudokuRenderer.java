@@ -1,5 +1,12 @@
 package ru.timeconqueror.lootgames.client.render;
 
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -7,6 +14,7 @@ import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
+import net.minecraft.client.resources.IResource;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 
@@ -24,6 +32,15 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
 
     public static ResourceLocation BOARD = new ResourceLocation(LootGames.MODID, "textures/game/sdk_board.png");
 
+    // Border variant bitmask: bit0=right, bit1=bottom, bit2=left, bit3=top
+    private static final int BORDER_RIGHT = 1;
+    private static final int BORDER_BOTTOM = 2;
+    private static final int BORDER_LEFT = 4;
+    private static final int BORDER_TOP = 8;
+
+    // 16 texture variants (indexed by bitmask); null = not yet initialised
+    private static int[] boardTextures;
+
     @Override
     public void renderTileEntityAt(TileEntity teIn, double x, double y, double z, float partialTicks) {
         SudokuTile te = (SudokuTile) teIn;
@@ -35,17 +52,18 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
         GL11.glTranslated(x, y, z);
         BoardGameMasterTile.prepareMatrix(te);
 
-        bindTexture(BOARD);
         GL11.glDisable(GL11.GL_LIGHTING);
         GL11.glColor4f(1f, 1f, 1f, 1f);
 
+        ensureBoardTextures();
+
         for (int cx = 0; cx < size; cx++) {
             for (int cz = 0; cz < size; cz++) {
+                int variant = borderVariant(cx, cz, size);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, boardTextures[variant]);
                 DrawHelper.drawTexturedRectByParts(cx, cz, 1, 1, -0.005f, 0, 0, 1, 1, 1);
             }
         }
-
-        drawGridLines(size, 0.02f);
 
         GL11.glDisable(GL11.GL_DEPTH_TEST);
 
@@ -251,61 +269,67 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
         SudokuOverlayHandler.addSupportedMaster(te.getBlockPos(), game);
     }
 
-    /**
-     * Draws the main grid lines for a Sudoku board using OpenGL.
-     * <p>
-     * This method renders both the vertical and horizontal lines at every third interval to visually separate 3x3
-     * subgrids. The lines are drawn as quads with the specified thickness to ensure consistent width regardless of
-     * scale.
-     * </p>
-     *
-     * <p>
-     * <b>Rendering Notes:</b>
-     * </p>
-     * <ul>
-     * <li>Texture mapping is disabled during rendering.</li>
-     * <li>Alpha blending is enabled for smooth line edges.</li>
-     * <li>Cull face is disabled to ensure both sides of the lines are visible.</li>
-     * <li>Lines are drawn slightly offset along the Z-axis (z = -0.01f) to prevent z-fighting with other elements
-     * rendered on the same plane.</li>
-     * </ul>
-     *
-     * @param size      the size of the grid (e.g., 9 for a 9x9 Sudoku board)
-     * @param thickness the thickness of each line in world units
-     */
-    public static void drawGridLines(int size, float thickness) {
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glColor4f(1f, 1f, 1f, 1f);
+    private static int borderVariant(int cx, int cz, int size) {
+        int v = 0;
+        if ((cx + 1) % 3 == 0) v |= BORDER_RIGHT;
+        if ((cz + 1) % 3 == 0) v |= BORDER_BOTTOM;
+        if (cx == 0) v |= BORDER_LEFT;
+        if (cz == 0) v |= BORDER_TOP;
+        return v;
+    }
 
-        float z = -0.01f;
-        float half = thickness / 2.0f;
+    private static void ensureBoardTextures() {
+        if (boardTextures != null) return;
 
-        GL11.glBegin(GL11.GL_QUADS);
+        boardTextures = new int[16];
+        try {
+            IResource res = Minecraft.getMinecraft().getResourceManager().getResource(BOARD);
+            BufferedImage base = javax.imageio.ImageIO.read(res.getInputStream());
+            int w = base.getWidth();
+            int h = base.getHeight();
+            int borderPx = Math.max(1, w / 16);
 
-        for (int i = 0; i <= size; i++) {
-            if (i % 3 == 0) {
-                GL11.glVertex3f(i - half, 0, z);
-                GL11.glVertex3f(i + half, 0, z);
-                GL11.glVertex3f(i + half, size, z);
-                GL11.glVertex3f(i - half, size, z);
+            for (int variant = 0; variant < 16; variant++) {
+                BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = img.createGraphics();
+                g.drawImage(base, 0, 0, null);
+                if (variant != 0) {
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.8f));
+                    g.setColor(new Color(0.85f, 0.85f, 0.85f));
+                    if ((variant & BORDER_RIGHT) != 0) g.fillRect(w - borderPx, 0, borderPx, h);
+                    if ((variant & BORDER_BOTTOM) != 0) g.fillRect(0, h - borderPx, w, borderPx);
+                    if ((variant & BORDER_LEFT) != 0) g.fillRect(0, 0, borderPx, h);
+                    if ((variant & BORDER_TOP) != 0) g.fillRect(0, 0, w, borderPx);
+                }
+                g.dispose();
+                boardTextures[variant] = uploadTexture(img);
             }
+        } catch (IOException e) {
+            LootGames.LOGGER.error("Failed to load board texture variants", e);
         }
+    }
 
-        for (int i = 0; i <= size; i++) {
-            if (i % 3 == 0) {
-                GL11.glVertex3f(0, i - half, z);
-                GL11.glVertex3f(size, i - half, z);
-                GL11.glVertex3f(size, i + half, z);
-                GL11.glVertex3f(0, i + half, z);
-            }
+    private static int uploadTexture(BufferedImage img) {
+        int id = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int[] pixels = new int[w * h];
+        img.getRGB(0, 0, w, h, pixels, 0, w);
+
+        ByteBuffer buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+        for (int px : pixels) {
+            buf.put((byte) ((px >> 16) & 0xFF)); // R
+            buf.put((byte) ((px >> 8) & 0xFF)); // G
+            buf.put((byte) (px & 0xFF)); // B
+            buf.put((byte) ((px >> 24) & 0xFF)); // A
         }
+        buf.flip();
 
-        GL11.glEnd();
-
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        return id;
     }
 }
