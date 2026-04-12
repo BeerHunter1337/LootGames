@@ -7,10 +7,6 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
@@ -67,144 +63,44 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
 
         GL11.glDisable(GL11.GL_DEPTH_TEST);
 
-        Map<Integer, Integer> numberCounts = new HashMap<>();
-
-        for (int cx = 0; cx < size; cx++) {
-            for (int cz = 0; cz < size; cz++) {
-                int puzzleVal = board.getPuzzleValue(cx, cz);
-                int playerVal = board.getPlayerValue(new Pos2i(cx, cz));
-                int val = puzzleVal != 0 ? puzzleVal : playerVal;
-                if (val != 0) numberCounts.put(val, numberCounts.getOrDefault(val, 0) + 1);
-            }
-        }
-
-        Set<Pos2i> duplicatePositions = new HashSet<>();
-        Set<Pos2i> correctCompletedPositions = new HashSet<>();
-
-        for (int row = 0; row < size; row++) {
-            Set<Pos2i> section = new HashSet<>();
-            Map<Integer, Integer> counts = new HashMap<>();
-            boolean valid = true;
-
-            for (int col = 0; col < size; col++) {
-                Pos2i pos = new Pos2i(row, col);
-                int val = board.getPuzzleValue(pos);
-                if (val == 0) val = board.getPlayerValue(pos);
-                section.add(pos);
-
-                if (val < 1 || val > 9) valid = false;
-                if (val != 0) {
-                    counts.put(val, counts.getOrDefault(val, 0) + 1);
-                }
-            }
-
-            for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
-                if (e.getValue() > 1) {
-                    valid = false;
-                    for (int col = 0; col < size; col++) {
-                        Pos2i pos = new Pos2i(row, col);
-                        int val = board.getPuzzleValue(pos);
-                        if (val == 0) val = board.getPlayerValue(pos);
-                        if (val == e.getKey()) duplicatePositions.add(pos);
-                    }
-                }
-            }
-
-            if (valid && counts.size() == 9) correctCompletedPositions.addAll(section);
-        }
-
-        for (int col = 0; col < size; col++) {
-            Set<Pos2i> section = new HashSet<>();
-            Map<Integer, Integer> counts = new HashMap<>();
-            boolean valid = true;
-
-            for (int row = 0; row < size; row++) {
-                Pos2i pos = new Pos2i(row, col);
-                int val = board.getPuzzleValue(pos);
-                if (val == 0) val = board.getPlayerValue(pos);
-                section.add(pos);
-
-                if (val < 1 || val > 9) valid = false;
-                if (val != 0) {
-                    counts.put(val, counts.getOrDefault(val, 0) + 1);
-                }
-            }
-
-            for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
-                if (e.getValue() > 1) {
-                    valid = false;
-                    for (int row = 0; row < size; row++) {
-                        Pos2i pos = new Pos2i(row, col);
-                        int val = board.getPuzzleValue(pos);
-                        if (val == 0) val = board.getPlayerValue(pos);
-                        if (val == e.getKey()) duplicatePositions.add(pos);
-                    }
-                }
-            }
-
-            if (valid && counts.size() == 9) correctCompletedPositions.addAll(section);
-        }
-
-        for (int boxRow = 0; boxRow < 3; boxRow++) {
-            for (int boxCol = 0; boxCol < 3; boxCol++) {
-                Set<Pos2i> section = new HashSet<>();
-                Map<Integer, Integer> counts = new HashMap<>();
-                boolean valid = true;
-
-                for (int dy = 0; dy < 3; dy++) {
-                    for (int dx = 0; dx < 3; dx++) {
-                        int row = boxRow * 3 + dy;
-                        int col = boxCol * 3 + dx;
-                        Pos2i pos = new Pos2i(row, col);
-                        int val = board.getPuzzleValue(pos);
-                        if (val == 0) val = board.getPlayerValue(pos);
-                        section.add(pos);
-
-                        if (val < 1 || val > 9) valid = false;
-                        if (val != 0) {
-                            counts.put(val, counts.getOrDefault(val, 0) + 1);
-                        }
-                    }
-                }
-
-                for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
-                    if (e.getValue() > 1) {
-                        valid = false;
-                        for (Pos2i pos : section) {
-                            int val = board.getPuzzleValue(pos);
-                            if (val == 0) val = board.getPlayerValue(pos);
-                            if (val == e.getKey()) duplicatePositions.add(pos);
-                        }
-                    }
-                }
-
-                if (valid && counts.size() == 9) correctCompletedPositions.addAll(section);
-            }
-        }
-
         Minecraft mc = Minecraft.getMinecraft();
 
+        float revealProgress = game.getBoardRevealProgress();
+        float lcProgress = game.getLevelCompleteProgress();
+
         for (int cx = 0; cx < size; cx++) {
             for (int cz = 0; cz < size; cz++) {
+                // board reveal: skip cells not yet scanned (row-major order)
+                if (revealProgress >= 0 && revealProgress < 1f) {
+                    int cellIndex = cz * SudokuBoard.SIZE + cx;
+                    if (cellIndex > revealProgress * 81f) continue;
+                }
+
                 Pos2i pos = new Pos2i(cx, cz);
                 int puzzleVal = board.getPuzzleValue(cx, cz);
                 int playerVal = board.getPlayerValue(pos);
                 int actualVal = puzzleVal != 0 ? puzzleVal : playerVal;
 
                 if (actualVal != 0) {
-                    int count = numberCounts.getOrDefault(actualVal, 0);
-                    int color;
+                    int color = puzzleVal != 0 ? 0x808080 : 0xFFFFFF;
 
-                    if (count > 9) {
-                        color = 0xFFAAAA;
-                    } else if (duplicatePositions.contains(pos)) {
-                        color = 0xFFFF00;
-                    } else if (correctCompletedPositions.contains(pos)) {
-                        color = 0x00FFFF;
-                    } else if (count == 9) {
-                        color = 0x00FF00;
-                    } else {
-                        color = puzzleVal != 0 ? 0x808080 : 0xFFFFFF;
+                    if (puzzleVal == 0) {
+                        float p = game.getWrongAnswerProgress();
+                        if (p >= 0) {
+                            int gb = (int) (0xFF * (1f - p));
+                            color = (0xFF << 16) | (gb << 8) | gb;
+                        }
+                    }
+
+                    // level complete: all cells fade to gold
+                    if (lcProgress >= 0) {
+                        int baseR = (color >> 16) & 0xFF;
+                        int baseG = (color >> 8) & 0xFF;
+                        int baseB = color & 0xFF;
+                        int r = baseR + (int) ((0xFF - baseR) * lcProgress);
+                        int g = baseG + (int) ((0xDD - baseG) * lcProgress);
+                        int b = (int) (baseB * (1f - lcProgress));
+                        color = (r << 16) | (g << 8) | b;
                     }
 
                     String text = Integer.toString(actualVal);

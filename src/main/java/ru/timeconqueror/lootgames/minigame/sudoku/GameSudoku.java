@@ -10,14 +10,18 @@ import lombok.Getter;
 import lombok.Setter;
 import ru.timeconqueror.lootgames.api.minigame.BoardLootGame;
 import ru.timeconqueror.lootgames.api.minigame.ILootGameFactory;
+import ru.timeconqueror.lootgames.api.minigame.NotifyColor;
 import ru.timeconqueror.lootgames.api.util.Pos2i;
 import ru.timeconqueror.lootgames.api.util.RewardUtils;
 import ru.timeconqueror.lootgames.common.config.ConfigSudoku;
 import ru.timeconqueror.lootgames.common.config.LGConfigs;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncBoard;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncCell;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuLevelComplete;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuSpawnLevelBeatParticles;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuWrongAnswer;
 import ru.timeconqueror.lootgames.registry.LGBlocks;
+import ru.timeconqueror.lootgames.registry.LGSounds;
 import ru.timeconqueror.lootgames.utils.MouseClickType;
 import ru.timeconqueror.lootgames.utils.future.BlockPos;
 import ru.timeconqueror.lootgames.utils.future.WorldExt;
@@ -29,6 +33,15 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
     public long endGameCheckTime;
 
     public int currentLevel = 1;
+    private int attemptCount = 0;
+    private boolean sendRevealOnNextTick = false;
+
+    // client-side animation state
+    public long cWrongAnswerAnimStart = -1;
+    public long cBoardRevealAnimStart = -1;
+    public long cLevelCompleteAnimStart = -1;
+    private SudokuBoard cPendingBoardReset = null;
+    private SudokuBoard cPendingNewBoard = null;
 
     @Getter
     public SudokuBoard board;
@@ -45,10 +58,13 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
         setupInitialStage(new StageWaiting());
         if (isServerSide()) {
             configSnapshot = LGConfigs.SUDOKU.snapshot();
+        }
+        super.onPlace(); // syncs empty board to clients
+        if (isServerSide()) {
             int blanks = configSnapshot.getStage1().blanksCount();
             board.generate(blanks);
+            sendRevealOnNextTick = true; // send SPSSyncBoard next tick, after clients have the TE
         }
-        super.onPlace();
     }
 
     @Override
@@ -58,6 +74,101 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
             configSnapshot = ConfigSudoku.ConfigSudokuSnapshot.stub();
         }
     }
+
+    @Override
+    public void onTick() {
+        super.onTick();
+        if (!isClientSide()) {
+            if (sendRevealOnNextTick) {
+                sendRevealOnNextTick = false;
+                sendUpdatePacketToNearby(new SPSSyncBoard(board));
+                save();
+            }
+            return;
+        }
+
+        if (cWrongAnswerAnimStart >= 0) {
+            long elapsed = getWorld().getTotalWorldTime() - cWrongAnswerAnimStart;
+            if (elapsed == 20) {
+                spawnWrongAnswerParticles();
+            }
+            if (elapsed >= 25) {
+                if (cPendingBoardReset != null) {
+                    board = cPendingBoardReset;
+                    cPendingBoardReset = null;
+                }
+                cWrongAnswerAnimStart = -1;
+            }
+        }
+
+        if (cLevelCompleteAnimStart >= 0) {
+            long elapsed = getWorld().getTotalWorldTime() - cLevelCompleteAnimStart;
+            if (elapsed >= 15) {
+                if (cPendingNewBoard != null) {
+                    board = cPendingNewBoard;
+                    cPendingNewBoard = null;
+                }
+                cLevelCompleteAnimStart = -1;
+                startBoardRevealAnim();
+            }
+        }
+    }
+
+    // --- animation API (client-side) ---
+
+    public void startBoardRevealAnim() {
+        cBoardRevealAnimStart = getWorld().getTotalWorldTime();
+    }
+
+    public void startWrongAnswerAnim(SudokuBoard pendingReset) {
+        cWrongAnswerAnimStart = getWorld().getTotalWorldTime();
+        cPendingBoardReset = pendingReset;
+    }
+
+    public void startLevelCompleteAnim(SudokuBoard pendingNewBoard) {
+        cLevelCompleteAnimStart = getWorld().getTotalWorldTime();
+        cPendingNewBoard = pendingNewBoard;
+    }
+
+    /** Returns 0..1 progress of board reveal scan, or -1 if not animating. Client-side only. */
+    public float getBoardRevealProgress() {
+        if (cBoardRevealAnimStart < 0) return -1f;
+        return Math.min(1f, (getWorld().getTotalWorldTime() - cBoardRevealAnimStart) / 30f);
+    }
+
+    /** Returns 0..1 progress of wrong-answer animation, or -1 if not animating. Client-side only. */
+    public float getWrongAnswerProgress() {
+        if (cWrongAnswerAnimStart < 0) return -1f;
+        return Math.min(1f, (getWorld().getTotalWorldTime() - cWrongAnswerAnimStart) / 25f);
+    }
+
+    /** Returns 0..1 progress of level-complete exit animation, or -1 if not animating. Client-side only. */
+    public float getLevelCompleteProgress() {
+        if (cLevelCompleteAnimStart < 0) return -1f;
+        return Math.min(1f, (getWorld().getTotalWorldTime() - cLevelCompleteAnimStart) / 15f);
+    }
+
+    private void spawnWrongAnswerParticles() {
+        BlockPos origin = getBoardOrigin();
+        for (int row = 0; row < SudokuBoard.SIZE; row++) {
+            for (int col = 0; col < SudokuBoard.SIZE; col++) {
+                if (board.getPuzzleValue(col, row) == 0 && board.getPlayerValue(new Pos2i(col, row)) != 0) {
+                    for (int i = 0; i < 2; i++) {
+                        getWorld().spawnParticle(
+                                "flame",
+                                origin.getX() + col + 0.2 + getWorld().rand.nextDouble() * 0.6,
+                                origin.getY() + 1.05,
+                                origin.getZ() + row + 0.2 + getWorld().rand.nextDouble() * 0.6,
+                                0,
+                                0.04 + getWorld().rand.nextDouble() * 0.04,
+                                0);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- core game ---
 
     @Override
     public int getCurrentBoardSize() {
@@ -80,14 +191,36 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
 
     public void handleEndGameCheck() {
         if (endGameCheckTime != 0 && System.currentTimeMillis() - endGameCheckTime <= 500) {
-            if (currentLevel > 1) {
-                triggerGameWin();
+            endGameCheckTime = 0;
+            if (board.checkWin()) {
+                onLevelSuccessfullyFinished();
             } else {
-                triggerGameLose();
+                attemptCount++;
+                board.resetPlayer();
+                WorldExt.playSoundServerly(getWorld(), getGameCenter(), LGSounds.MS_BOMB_ACTIVATED, 0.75F, 1.0F);
+                sendUpdatePacketToNearby(new SPSudokuWrongAnswer(board));
+                if (attemptCount >= configSnapshot.getAttemptCount()) {
+                    if (currentLevel > 1) {
+                        triggerGameWin();
+                    } else {
+                        triggerGameLose();
+                    }
+                } else {
+                    sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.wrong"), NotifyColor.FAIL);
+                    sendToNearby(
+                            new ChatComponentTranslation(
+                                    "msg.lootgames.attempt_left",
+                                    configSnapshot.getAttemptCount() - attemptCount),
+                            NotifyColor.GRAVE_NOTIFY);
+                }
             }
         } else {
-            sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.check_end"));
-            endGameCheckTime = System.currentTimeMillis();
+            if (board.countFilledCells() < board.countTotalBlanks()) {
+                sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.not_filled"), NotifyColor.WARN);
+            } else {
+                sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.check_end"), NotifyColor.NOTIFY);
+                endGameCheckTime = System.currentTimeMillis();
+            }
         }
     }
 
@@ -99,7 +232,8 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
             WorldExt.playSoundServerly(getWorld(), getGameCenter(), Sounds.PLAYER_LEVELUP, 0.75F, 1.0F);
             int blanks = configSnapshot.getStageByIndex(currentLevel).blanksCount();
             board.generate(blanks);
-            saveAndSync();
+            sendUpdatePacketToNearby(new SPSudokuLevelComplete(board));
+            save();
         } else {
             triggerGameWin();
         }
@@ -121,6 +255,7 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
         super.writeNBT(nbt, type);
         nbt.setTag("board", board.writeNBT());
         nbt.setInteger("current_level", currentLevel);
+        nbt.setInteger("attempt_count", attemptCount);
         nbt.setTag("config_snapshot", ConfigSudoku.ConfigSudokuSnapshot.serialize(configSnapshot));
     }
 
@@ -129,6 +264,7 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
         super.readNBT(nbt, type);
         board.readNBT(nbt.getCompoundTag("board"));
         currentLevel = nbt.getInteger("current_level");
+        attemptCount = nbt.getInteger("attempt_count");
         configSnapshot = ConfigSudoku.ConfigSudokuSnapshot.deserialize(nbt.getCompoundTag("config_snapshot"));
     }
 

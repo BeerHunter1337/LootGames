@@ -16,8 +16,10 @@ import ru.timeconqueror.lootgames.common.packet.game.sudoku.CPSudokuToggleNote;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncBoard;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncCell;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSSyncCellNotes;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuLevelComplete;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuResetNumber;
 import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuSpawnLevelBeatParticles;
+import ru.timeconqueror.lootgames.common.packet.game.sudoku.SPSudokuWrongAnswer;
 
 public class LGGamePackets {
 
@@ -41,6 +43,8 @@ public class LGGamePackets {
         LootGamesAPI.regClientPacket(CPSudokuEndGameCheck.class);
         LootGamesAPI.regServerPacket(SPSSyncCellNotes.class);
         LootGamesAPI.regServerPacket(SPSudokuSpawnLevelBeatParticles.class);
+        LootGamesAPI.regServerPacket(SPSudokuLevelComplete.class);
+        LootGamesAPI.regServerPacket(SPSudokuWrongAnswer.class);
         LootGamesAPI.regServerPacket(SPSudokuResetNumber.class);
     }
 }

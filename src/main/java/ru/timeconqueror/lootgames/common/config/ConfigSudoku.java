@@ -12,6 +12,7 @@ import ru.timeconqueror.timecore.api.common.config.ConfigSection;
 public class ConfigSudoku extends Config {
 
     public int weight;
+    public int attemptCount;
 
     public StageConfig level1;
     public StageConfig level2;
@@ -36,6 +37,14 @@ public class ConfigSudoku extends Config {
                 Integer.MAX_VALUE,
                 "How likely this game is chosen compared to other games. The higher this value is, the more likely this game is chosen. Set to 0 to turn this off.");
 
+        attemptCount = config.getInt(
+                "attempt_count",
+                getKey(),
+                3,
+                1,
+                Integer.MAX_VALUE,
+                "Number of attempts the player has to submit a correct solution before the game ends.");
+
         level1.init(config);
         level2.init(config);
         level3.init(config);
@@ -49,7 +58,12 @@ public class ConfigSudoku extends Config {
     }
 
     public ConfigSudokuSnapshot snapshot() {
-        return new ConfigSudokuSnapshot(level1.snapshot(), level2.snapshot(), level3.snapshot(), level4.snapshot());
+        return new ConfigSudokuSnapshot(
+                attemptCount,
+                level1.snapshot(),
+                level2.snapshot(),
+                level3.snapshot(),
+                level4.snapshot());
     }
 
     public static class StageConfig extends ConfigSection {
@@ -75,12 +89,15 @@ public class ConfigSudoku extends Config {
     @Getter
     public static class ConfigSudokuSnapshot {
 
+        public int attemptCount;
         public LevelSnapshot stage1;
         public LevelSnapshot stage2;
         public LevelSnapshot stage3;
         public LevelSnapshot stage4;
 
-        public ConfigSudokuSnapshot(LevelSnapshot s1, LevelSnapshot s2, LevelSnapshot s3, LevelSnapshot s4) {
+        public ConfigSudokuSnapshot(int attemptCount, LevelSnapshot s1, LevelSnapshot s2, LevelSnapshot s3,
+                LevelSnapshot s4) {
+            this.attemptCount = attemptCount;
             this.stage1 = s1;
             this.stage2 = s2;
             this.stage3 = s3;
@@ -89,6 +106,7 @@ public class ConfigSudoku extends Config {
 
         public static NBTTagCompound serialize(ConfigSudokuSnapshot snap) {
             NBTTagCompound tag = new NBTTagCompound();
+            tag.setInteger("attempt_count", snap.attemptCount);
             tag.setTag("stage_1", LevelSnapshot.serialize(snap.stage1));
             tag.setTag("stage_2", LevelSnapshot.serialize(snap.stage2));
             tag.setTag("stage_3", LevelSnapshot.serialize(snap.stage3));
@@ -98,6 +116,7 @@ public class ConfigSudoku extends Config {
 
         public static ConfigSudokuSnapshot deserialize(NBTTagCompound tag) {
             return new ConfigSudokuSnapshot(
+                    tag.getInteger("attempt_count"),
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_1")),
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_2")),
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_3")),
@@ -106,6 +125,7 @@ public class ConfigSudoku extends Config {
 
         public static ConfigSudokuSnapshot stub() {
             return new ConfigSudokuSnapshot(
+                    3,
                     LevelSnapshot.stub(),
                     LevelSnapshot.stub(),
                     LevelSnapshot.stub(),
