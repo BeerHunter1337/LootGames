@@ -213,6 +213,7 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
                                     configSnapshot.getAttemptCount() - attemptCount),
                             NotifyColor.GRAVE_NOTIFY);
                 }
+                save();
             }
         } else {
             if (board.countFilledCells() < board.countTotalBlanks()) {

@@ -115,8 +115,11 @@ public class ConfigSudoku extends Config {
         }
 
         public static ConfigSudokuSnapshot deserialize(NBTTagCompound tag) {
+            int attempts = tag.hasKey("attempt_count")
+                    ? tag.getInteger("attempt_count")
+                    : 3;
             return new ConfigSudokuSnapshot(
-                    tag.getInteger("attempt_count"),
+                    attempts,
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_1")),
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_2")),
                     LevelSnapshot.deserialize(tag.getCompoundTag("stage_3")),
