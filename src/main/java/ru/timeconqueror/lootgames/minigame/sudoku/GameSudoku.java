@@ -36,6 +36,10 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
     private int attemptCount = 0;
     private boolean sendRevealOnNextTick = false;
 
+    private long allBlanksFilledSinceMs;
+
+    private boolean submitReminderSent;
+
     // client-side animation state
     public long cWrongAnswerAnimStart = -1;
     public long cBoardRevealAnimStart = -1;
@@ -83,6 +87,8 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
                 sendRevealOnNextTick = false;
                 sendUpdatePacketToNearby(new SPSSyncBoard(board));
                 save();
+            } else {
+                tickSubmitReminder();
             }
             return;
         }
@@ -186,6 +192,31 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
         public void genOnPuzzleMasterClick(World world, BlockPos puzzleMasterPos) {
             BlockPos floorCenterPos = puzzleMasterPos.offset(0, -2, 0);
             WorldExt.setBlock(world, floorCenterPos, LGBlocks.SDK_ACTIVATOR);
+        }
+    }
+
+    private void tickSubmitReminder() {
+        if (getWorld().getTotalWorldTime() % 20 != 0) return;
+        if (!board.isGenerated()) {
+            allBlanksFilledSinceMs = 0;
+            submitReminderSent = false;
+            return;
+        }
+        boolean allFilled = board.countFilledCells() == board.countTotalBlanks();
+        if (!allFilled) {
+            allBlanksFilledSinceMs = 0;
+            submitReminderSent = false;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (allBlanksFilledSinceMs == 0) {
+            allBlanksFilledSinceMs = now;
+            submitReminderSent = false;
+            return;
+        }
+        if (!submitReminderSent && now - allBlanksFilledSinceMs >= 10_000L) {
+            sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.submit_reminder"), NotifyColor.NOTIFY);
+            submitReminderSent = true;
         }
     }
 
