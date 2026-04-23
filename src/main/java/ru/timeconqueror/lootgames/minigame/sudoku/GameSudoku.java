@@ -227,7 +227,11 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
                 onLevelSuccessfullyFinished();
             } else {
                 attemptCount++;
-                board.resetPlayer();
+                switch (configSnapshot.getClearOnWrongAnswer()) {
+                    case ALL -> board.resetPlayer();
+                    case WRONG_ONLY -> board.clearWrongPlayerCells();
+                    case NONE -> {}
+                }
                 WorldExt.playSoundServerly(getWorld(), getGameCenter(), LGSounds.MS_BOMB_ACTIVATED, 0.75F, 1.0F);
                 sendUpdatePacketToNearby(new SPSudokuWrongAnswer(board));
                 if (attemptCount >= configSnapshot.getAttemptCount()) {

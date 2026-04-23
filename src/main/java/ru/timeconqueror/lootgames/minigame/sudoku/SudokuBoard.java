@@ -138,6 +138,19 @@ public class SudokuBoard {
         notes = new boolean[SIZE][SIZE][9];
     }
 
+    public void clearWrongPlayerCells() {
+        for (int i = 0; i < SIZE; i++) {
+            for (int j = 0; j < SIZE; j++) {
+                if (puzzle[i][j] == 0 && player[i][j] != null
+                        && player[i][j] != 0
+                        && !player[i][j].equals(solution[i][j])) {
+                    player[i][j] = 0;
+                    Arrays.fill(notes[i][j], false);
+                }
+            }
+        }
+    }
+
     public boolean isGenerated() {
         return solution[0][0] != 0;
     }

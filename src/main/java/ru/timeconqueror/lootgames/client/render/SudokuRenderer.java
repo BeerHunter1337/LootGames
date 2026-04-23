@@ -7,6 +7,10 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
@@ -20,6 +24,7 @@ import ru.timeconqueror.lootgames.LootGames;
 import ru.timeconqueror.lootgames.api.block.tile.BoardGameMasterTile;
 import ru.timeconqueror.lootgames.api.util.Pos2i;
 import ru.timeconqueror.lootgames.common.block.tile.SudokuTile;
+import ru.timeconqueror.lootgames.common.config.ConfigSudoku;
 import ru.timeconqueror.lootgames.minigame.sudoku.GameSudoku;
 import ru.timeconqueror.lootgames.minigame.sudoku.SudokuBoard;
 import ru.timeconqueror.timecore.api.util.client.DrawHelper;
@@ -68,6 +73,9 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
         float revealProgress = game.getBoardRevealProgress();
         float lcProgress = game.getLevelCompleteProgress();
 
+        ConfigSudoku.ConfigSudokuSnapshot snap = game.getConfigSnapshot();
+        Map<Pos2i, Integer> hintColors = computeHintColors(board, size, snap);
+
         for (int cx = 0; cx < size; cx++) {
             for (int cz = 0; cz < size; cz++) {
                 // board reveal: skip cells not yet scanned (row-major order)
@@ -82,7 +90,8 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
                 int actualVal = puzzleVal != 0 ? puzzleVal : playerVal;
 
                 if (actualVal != 0) {
-                    int color = puzzleVal != 0 ? 0x808080 : 0xFFFFFF;
+                    Integer hint = hintColors == null ? null : hintColors.get(pos);
+                    int color = hint != null ? hint : (puzzleVal != 0 ? 0x808080 : 0xFFFFFF);
 
                     if (puzzleVal == 0) {
                         float p = game.getWrongAnswerProgress();
@@ -163,6 +172,112 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
         GL11.glPopMatrix();
 
         SudokuOverlayHandler.addSupportedMaster(te.getBlockPos(), game);
+    }
+
+    /**
+     * Builds a per-cell hint color override based on the player's current board state and the enabled hint flags.
+     * Returns {@code null} when no hints are enabled (caller falls back to the plain puzzle/player colors).
+     *
+     * Priority: overflow > duplicate > completed section > completed digit.
+     */
+    private static Map<Pos2i, Integer> computeHintColors(SudokuBoard board, int size,
+            ConfigSudoku.ConfigSudokuSnapshot snap) {
+        if (snap == null) return null;
+        boolean any = snap.isHintDuplicates() || snap.isHintOverflow()
+                || snap.isHintCompletedDigit()
+                || snap.isHintCompletedSection();
+        if (!any) return null;
+
+        Map<Integer, Integer> numberCounts = new HashMap<>();
+        for (int cx = 0; cx < size; cx++) {
+            for (int cz = 0; cz < size; cz++) {
+                int puzzleVal = board.getPuzzleValue(cx, cz);
+                int playerVal = board.getPlayerValue(new Pos2i(cx, cz));
+                int val = puzzleVal != 0 ? puzzleVal : playerVal;
+                if (val != 0) numberCounts.merge(val, 1, Integer::sum);
+            }
+        }
+
+        Set<Pos2i> duplicatePositions = new HashSet<>();
+        Set<Pos2i> correctCompletedPositions = new HashSet<>();
+
+        for (int row = 0; row < size; row++) {
+            Pos2i[] section = new Pos2i[size];
+            for (int col = 0; col < size; col++) section[col] = new Pos2i(row, col);
+            scanSection(board, section, duplicatePositions, correctCompletedPositions);
+        }
+        for (int col = 0; col < size; col++) {
+            Pos2i[] section = new Pos2i[size];
+            for (int row = 0; row < size; row++) section[row] = new Pos2i(row, col);
+            scanSection(board, section, duplicatePositions, correctCompletedPositions);
+        }
+        for (int boxRow = 0; boxRow < 3; boxRow++) {
+            for (int boxCol = 0; boxCol < 3; boxCol++) {
+                Pos2i[] section = new Pos2i[9];
+                int i = 0;
+                for (int dy = 0; dy < 3; dy++) {
+                    for (int dx = 0; dx < 3; dx++) {
+                        section[i++] = new Pos2i(boxRow * 3 + dy, boxCol * 3 + dx);
+                    }
+                }
+                scanSection(board, section, duplicatePositions, correctCompletedPositions);
+            }
+        }
+
+        Map<Pos2i, Integer> out = new HashMap<>();
+        for (int cx = 0; cx < size; cx++) {
+            for (int cz = 0; cz < size; cz++) {
+                Pos2i pos = new Pos2i(cx, cz);
+                int puzzleVal = board.getPuzzleValue(cx, cz);
+                int playerVal = board.getPlayerValue(pos);
+                int actualVal = puzzleVal != 0 ? puzzleVal : playerVal;
+                if (actualVal == 0) continue;
+
+                int count = numberCounts.getOrDefault(actualVal, 0);
+                if (snap.isHintOverflow() && count > 9) {
+                    out.put(pos, 0xFFAAAA);
+                } else if (snap.isHintDuplicates() && duplicatePositions.contains(pos)) {
+                    out.put(pos, 0xFFFF00);
+                } else if (snap.isHintCompletedSection() && correctCompletedPositions.contains(pos)) {
+                    out.put(pos, 0x00FFFF);
+                } else if (snap.isHintCompletedDigit() && count == 9) {
+                    out.put(pos, 0x00FF00);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Scans a row/column/box of 9 positions. Adds every position that participates in a duplicate digit to
+     * {@code duplicates}, and adds all positions to {@code completed} when the section contains the digits 1-9 exactly
+     * once.
+     */
+    private static void scanSection(SudokuBoard board, Pos2i[] section, Set<Pos2i> duplicates, Set<Pos2i> completed) {
+        Map<Integer, Integer> counts = new HashMap<>();
+        boolean valid = true;
+        for (Pos2i pos : section) {
+            int val = board.getPuzzleValue(pos.getX(), pos.getY());
+            if (val == 0) val = board.getPlayerValue(pos);
+            if (val < 1 || val > 9) {
+                valid = false;
+            } else {
+                counts.merge(val, 1, Integer::sum);
+            }
+        }
+        for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
+            if (e.getValue() > 1) {
+                valid = false;
+                for (Pos2i pos : section) {
+                    int val = board.getPuzzleValue(pos.getX(), pos.getY());
+                    if (val == 0) val = board.getPlayerValue(pos);
+                    if (val == e.getKey()) duplicates.add(pos);
+                }
+            }
+        }
+        if (valid && counts.size() == 9) {
+            for (Pos2i pos : section) completed.add(pos);
+        }
     }
 
     private static int borderVariant(int cx, int cz, int size) {
