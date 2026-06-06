@@ -51,7 +51,10 @@ public class SudokuBoardClickHandler {
         } else {
             double subX = mop.hitVec.xCoord - Math.floor(mop.hitVec.xCoord);
             double subZ = mop.hitVec.zCoord - Math.floor(mop.hitVec.zCoord);
-            int digit = (int) (subZ * 3) * 3 + (int) (subX * 3) + 1;
+            // clamp to [0, 2] so a hit exactly on the cell edge (sub == 1.0) doesn't overflow the 1-9 range
+            int col = Math.min(2, (int) (subX * 3));
+            int row = Math.min(2, (int) (subZ * 3));
+            int digit = row * 3 + col + 1;
             game.sendFeedbackPacket(new CPSudokuToggleNote(cellPos, digit));
         }
 

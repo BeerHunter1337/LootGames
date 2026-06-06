@@ -14,7 +14,10 @@ import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
+import net.minecraft.client.resources.IReloadableResourceManager;
 import net.minecraft.client.resources.IResource;
+import net.minecraft.client.resources.IResourceManager;
+import net.minecraft.client.resources.IResourceManagerReloadListener;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 
@@ -29,7 +32,7 @@ import ru.timeconqueror.lootgames.minigame.sudoku.GameSudoku;
 import ru.timeconqueror.lootgames.minigame.sudoku.SudokuBoard;
 import ru.timeconqueror.timecore.api.util.client.DrawHelper;
 
-public class SudokuRenderer extends TileEntitySpecialRenderer {
+public class SudokuRenderer extends TileEntitySpecialRenderer implements IResourceManagerReloadListener {
 
     public static ResourceLocation BOARD = new ResourceLocation(LootGames.MODID, "textures/game/sdk_board.png");
 
@@ -41,6 +44,24 @@ public class SudokuRenderer extends TileEntitySpecialRenderer {
 
     // 16 texture variants (indexed by bitmask); null = not yet initialised
     private static int[] boardTextures;
+
+    public SudokuRenderer() {
+        IResourceManager rm = Minecraft.getMinecraft().getResourceManager();
+        if (rm instanceof IReloadableResourceManager) {
+            ((IReloadableResourceManager) rm).registerReloadListener(this);
+        }
+    }
+
+    @Override
+    public void onResourceManagerReload(IResourceManager resourceManager) {
+        // free the generated GL texture ids and force regeneration against the new resources
+        if (boardTextures != null) {
+            for (int id : boardTextures) {
+                if (id != 0) GL11.glDeleteTextures(id);
+            }
+            boardTextures = null;
+        }
+    }
 
     @Override
     public void renderTileEntityAt(TileEntity teIn, double x, double y, double z, float partialTicks) {

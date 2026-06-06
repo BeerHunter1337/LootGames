@@ -30,13 +30,15 @@ import ru.timeconqueror.timecore.api.common.tile.SerializationType;
 
 public class GameSudoku extends BoardLootGame<GameSudoku> {
 
-    public long endGameCheckTime;
+    // world tick (getTotalWorldTime) at which the end-game check was armed; 0 = not armed
+    public long endGameCheckTick;
 
     public int currentLevel = 1;
     private int attemptCount = 0;
     private boolean sendRevealOnNextTick = false;
 
-    private long allBlanksFilledSinceMs;
+    // world tick at which the board first became fully filled; 0 = not full
+    private long allBlanksFilledSinceTick;
 
     private boolean submitReminderSent;
 
@@ -196,33 +198,36 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
     }
 
     private void tickSubmitReminder() {
-        if (getWorld().getTotalWorldTime() % 20 != 0) return;
+        long now = getWorld().getTotalWorldTime();
+        if (now % 20 != 0) return;
         if (!board.isGenerated()) {
-            allBlanksFilledSinceMs = 0;
+            allBlanksFilledSinceTick = 0;
             submitReminderSent = false;
             return;
         }
         boolean allFilled = board.countFilledCells() == board.countTotalBlanks();
         if (!allFilled) {
-            allBlanksFilledSinceMs = 0;
+            allBlanksFilledSinceTick = 0;
             submitReminderSent = false;
             return;
         }
-        long now = System.currentTimeMillis();
-        if (allBlanksFilledSinceMs == 0) {
-            allBlanksFilledSinceMs = now;
+        if (allBlanksFilledSinceTick == 0) {
+            allBlanksFilledSinceTick = now;
             submitReminderSent = false;
             return;
         }
-        if (!submitReminderSent && now - allBlanksFilledSinceMs >= 10_000L) {
+        // 10 seconds at 20 ticks/second
+        if (!submitReminderSent && now - allBlanksFilledSinceTick >= 200L) {
             sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.submit_reminder"), NotifyColor.NOTIFY);
             submitReminderSent = true;
         }
     }
 
     public void handleEndGameCheck() {
-        if (endGameCheckTime != 0 && System.currentTimeMillis() - endGameCheckTime <= 500) {
-            endGameCheckTime = 0;
+        long now = getWorld().getTotalWorldTime();
+        // 500ms confirm window ~= 10 ticks at 20 ticks/second
+        if (endGameCheckTick != 0 && now - endGameCheckTick <= 10) {
+            endGameCheckTick = 0;
             if (board.checkWin()) {
                 onLevelSuccessfullyFinished();
             } else {
@@ -255,7 +260,7 @@ public class GameSudoku extends BoardLootGame<GameSudoku> {
                 sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.not_filled"), NotifyColor.WARN);
             } else {
                 sendToNearby(new ChatComponentTranslation("msg.lootgames.sdk.check_end"), NotifyColor.NOTIFY);
-                endGameCheckTime = System.currentTimeMillis();
+                endGameCheckTick = now;
             }
         }
     }
