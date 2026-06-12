@@ -9,6 +9,7 @@ import ru.timeconqueror.lootgames.api.minigame.LootGame;
 import ru.timeconqueror.lootgames.api.packet.IClientGamePacket;
 import ru.timeconqueror.lootgames.api.util.Pos2i;
 import ru.timeconqueror.lootgames.minigame.sudoku.GameSudoku;
+import ru.timeconqueror.lootgames.minigame.sudoku.SudokuBoard;
 
 public class CPSudokuToggleNote implements IClientGamePacket {
 
@@ -42,6 +43,11 @@ public class CPSudokuToggleNote implements IClientGamePacket {
     @Override
     public <STAGE extends LootGame.Stage, G extends LootGame<STAGE, G>> void runOnServer(EntityPlayerMP sender,
             LootGame<STAGE, G> genericGame) {
+        if (!(genericGame instanceof GameSudoku)) return;
+        if (pos.getX() < 0 || pos.getX() >= SudokuBoard.SIZE || pos.getY() < 0 || pos.getY() >= SudokuBoard.SIZE)
+            return;
+        if (digit < 1 || digit > 9) return;
+
         GameSudoku game = (GameSudoku) genericGame;
         game.getBoard().toggleNote(pos, digit);
         game.sendUpdatePacketToNearby(new SPSSyncCellNotes(pos, game.getBoard().getNotes(pos)));

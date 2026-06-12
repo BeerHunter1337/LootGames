@@ -38,6 +38,8 @@ public class CPSudokuEndGameCheck implements IClientGamePacket {
     @Override
     public <STAGE extends LootGame.Stage, G extends LootGame<STAGE, G>> void runOnServer(EntityPlayerMP sender,
             LootGame<STAGE, G> genericGame) {
+        if (!(genericGame instanceof GameSudoku)) return;
+
         ((GameSudoku) genericGame).handleEndGameCheck();
     }
 }
